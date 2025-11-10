@@ -1,37 +1,9 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-
-const Person = ({ person }) => {
-  return <p>{person.name}: {person.number}</p>
-}
-
-const Persons = ({ persons }) => {
-  return (
-    <>
-      {persons.map(person => <Person key={person.name} person={person} />)}
-    </>
-  )
-}
-
-const PersonForm = ({ newName, newNumber, handleNameChange, handleNumberChange, handleSubmit }) => {
-  return (
-    <form onSubmit={handleSubmit}>
-      <div>
-        name: <input value={newName} onChange={handleNameChange} type='text' placeholder="Enter name..." />
-      </div>
-      <div>
-        number: <input value={newNumber} onChange={handleNumberChange} type='tel' placeholder="Enter phone number" />
-      </div>
-      <div>
-        <button type="submit">add</button>
-      </div>
-    </form>
-  )
-}
-
-const Filter = ({ filter, handleFilterChange}) => {
-  return <input value={filter} onChange={handleFilterChange} placeholder="Filter names..." />
-}
+import Persons from './components/Persons'
+import PersonForm from './components/PersonForm'
+import Filter from './components/Filter'
+import peopleService from './services/people'
 
 const App = () => {
   const [persons, setPersons] = useState([]) 
@@ -39,15 +11,11 @@ const App = () => {
   const [newNumber, setNewNumber] = useState('')
   const [filter, setFilter] = useState('')
 
-  useEffect(() => {
-    console.log('effect invoked')
-    axios
-      .get('http://localhost:3001/persons')
-      .then(response => {
-        console.log('promise fulfilled')
-        setPersons(response.data)
-      })
-  }, [])
+  useEffect(
+    // curly braces ensure the function below does not return the promise but simply calls it
+    () => {peopleService.getAll().then(initialPeople => setPersons(initialPeople))},
+    []
+  )
 
   const handleNameChange = (event) => {
     setNewName(event.target.value)
@@ -67,16 +35,40 @@ const App = () => {
       name: newName,
       number: newNumber
     }
-    if (persons.some(person => person.name.toLowerCase() === newPerson.name.toLowerCase())) {
-      alert(`${newPerson.name} is already added to phonebook`)
-    } else if (newPerson.name === '' || newPerson.number === '') {
+    if (newPerson.name === '' || newPerson.number === '') {
       alert('Name or number cannot be empty')
+    } else if (persons.some(person => person.name.toLowerCase() === newPerson.name.toLowerCase())) {
+      if (window.confirm(`${newPerson.name} is already added to phonebook, replace the old number with a new one?`)) {
+        const personToUpdate = persons.find(person => person.name.toLowerCase() === newPerson.name.toLowerCase())
+        const updatedPerson = { ...personToUpdate, name: newPerson.name, number: newPerson.number }
+        peopleService
+          .update(personToUpdate.id, updatedPerson)
+          .then(returnedPerson => {
+            console.log('Old person', personToUpdate)
+            console.log('Updated person', returnedPerson)
+          })
+          .then(() => {peopleService.getAll().then(updatedPeople => setPersons(updatedPeople))})
+      }
     } else {
-      setPersons(persons.concat(newPerson))
-      setNewName('')
-      setNewNumber('')
-      console.log('Added', newPerson)
+      peopleService
+        .create(newPerson)
+        .then(returnedPerson => console.log('Created person', returnedPerson))
+        .then(() => {
+          peopleService.getAll().then(updatedPeople => setPersons(updatedPeople))
+          setNewName('')
+          setNewNumber('')
+        })
     }
+  }
+
+  const handleDelete = (id) => {
+    if (!window.confirm('Are you sure you want to delete this person?')) {
+      return;
+    }
+    peopleService
+      .deletePerson(id)
+      .then(returnedPerson => console.log('Deleted person', returnedPerson))
+      .then(() => {peopleService.getAll().then(updatedPeople => setPersons(updatedPeople))})
   }
 
   let filteredPersons = []
@@ -100,7 +92,7 @@ const App = () => {
         handleSubmit={handleSubmit}
       />
       <h3>Numbers</h3>
-      <Persons persons={filteredPersons} />
+      <Persons persons={filteredPersons} handleDelete={handleDelete}/>
     </div>
   )
 }
